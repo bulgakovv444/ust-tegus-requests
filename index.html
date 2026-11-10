@@ -917,7 +917,7 @@
     return false;
   }
 
-  // Хелперы для отображения службы и бригады
+  // Универсальные хелперы для отображения службы и бригады
   function requestServiceName(r) {
     if (!r) return '—';
     var n = serviceName(r.serviceId);
@@ -1837,7 +1837,7 @@
       var seniorMark = u.roleName === 'Старший мастер' ? ' · <span style="color:#7c3aed;font-weight:700;">СТАРШИЙ МАСТЕР</span>' : '';
       var drillerMark = u.roleName === 'Бурильщик' ? ' · <span style="color:#2563eb;font-weight:700;">БУРИЛЬЩИК</span>' : '';
 
-      // Отображение должности и бригады
+      // Отображаем должность и бригаду
       var displayRole = escapeHtml(u.roleName || '—');
       var displayBrigade = '';
       if (u.role === 'master' && u.brigade && u.brigade !== 'Служба') {

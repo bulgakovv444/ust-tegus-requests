@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Заявки Усть-Тегусский проект</title>
+<title>Заявки</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f4f6f9; color: #1f2933; padding: 15px; font-size: 14px; }
@@ -12,7 +12,7 @@
   h3 { font-size: 14px; margin: 0 0 8px; }
   .container { max-width: 1100px; margin: 0 auto; }
 
-  .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; flex-wrap: wrap; }
+  .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e5e7eb; padding-bottom: 10px; flex-wrap: wrap; align-items: center; }
   .tab-btn { background: none; border: none; font-size: 16px; font-weight: 600; color: #6b7280; cursor: pointer; padding: 8px 12px; border-radius: 6px; transition: all .15s; }
   .tab-btn:hover { background: #e5e7eb; color: #1f2933; }
   .tab-btn.active { background: #2563eb; color: #fff; }
@@ -20,6 +20,11 @@
   .notify-btn { margin-left: auto; align-self: center; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; padding: 8px 14px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; }
   .notify-btn:hover { background: #fde68a; }
   .notify-btn.on { background: #d1fae5; color: #065f46; border-color: #6ee7b7; }
+
+  .db-switcher-wrap { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
+  .db-switcher-wrap label { font-size: 12px; color: #6b7280; font-weight: 600; }
+  .db-switcher { font: inherit; padding: 7px 10px; border: 2px solid #c7d2fe; border-radius: 6px; background: #eef2ff; color: #1e3a8a; font-weight: 600; font-size: 13px; cursor: pointer; width: auto; }
+  .db-switcher:focus { outline: none; border-color: #2563eb; }
 
   .header-timer { padding: 10px 16px; border-radius: 6px; font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 10px; transition: all .3s; color: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
   .header-timer.open { background: #10b981; border: 1px solid #059669; }
@@ -166,7 +171,6 @@
 
   .brigade-note { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; font-weight: 500; }
 
-  /* Конструктор */
   .builder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
   .builder-card { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.06); border-top: 4px solid #2563eb; }
   .builder-card.services-card { border-top-color: #10b981; }
@@ -181,6 +185,8 @@
   .builder-add-row input { margin-bottom: 0; }
   .builder-add-row .btn { white-space: nowrap; }
   .builder-hint { font-size: 12px; color: #6b7280; margin-bottom: 10px; }
+
+  .db-badge { display: inline-block; background: #dbeafe; color: #1e40af; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 99px; margin-left: 6px; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -195,6 +201,10 @@
     <button class="tab-btn" id="tabService">Вход для службы</button>
     <button class="tab-btn" id="tabHistory">📋 История заявок</button>
     <button class="tab-btn" id="tabAdmin">🔐 Панель управления</button>
+    <div class="db-switcher-wrap">
+      <label for="dbSwitcher">🗄 База:</label>
+      <select id="dbSwitcher" class="db-switcher"></select>
+    </div>
     <button class="notify-btn" id="notifyBtn">🔔 Включить уведомления</button>
   </div>
 
@@ -339,7 +349,7 @@
       <div class="header-bar" style="background: #fef2f2; border: 1px solid #fecaca;">
         <div>
           <h2 style="color: #991b1b;">Панель Главного инженера</h2>
-          <div class="user-info">Полный доступ к системе</div>
+          <div class="user-info">Полный доступ к системе · <span id="adminDbLabel" class="db-badge">—</span></div>
         </div>
         <button class="btn gray small" id="logoutAdminBtn">Выйти</button>
       </div>
@@ -385,11 +395,10 @@
       <div id="adminBuilderBlock" class="hidden">
         <div class="card" style="border-left: 4px solid #2563eb;">
           <h2>🛠 Конструктор системы</h2>
-          <p class="builder-hint">Добавляйте и удаляйте службы, бригады и должности. Изменения сразу применяются во всех формах и фильтрах.</p>
+          <p class="builder-hint">Добавляйте и удаляйте службы, бригады и должности. Изменения сохраняются в текущей базе данных (<span id="builderDbLabel" class="db-badge">—</span>) и сразу применяются во всех формах и фильтрах.</p>
         </div>
 
         <div class="builder-grid">
-          <!-- СЛУЖБЫ -->
           <div class="builder-card services-card">
             <h3>🟢 Службы</h3>
             <p class="builder-hint">Каждая служба имеет внутренний ID (латиница, без пробелов). Он используется в базе данных.</p>
@@ -403,7 +412,6 @@
             </div>
           </div>
 
-          <!-- БРИГАДЫ -->
           <div class="builder-card brigades-card">
             <h3>🟠 Бригады</h3>
             <p class="builder-hint">Номер или название бригады. Отображается в заявках и фильтрах.</p>
@@ -414,7 +422,6 @@
             </div>
           </div>
 
-          <!-- ДОЛЖНОСТИ -->
           <div class="builder-card roles-card">
             <h3>🟣 Должности мастеров/ИТР</h3>
             <p class="builder-hint">Если должность требует выбора бригады (мастер, бурильщик), поставьте галочку.</p>
@@ -536,7 +543,6 @@
   </div>
 </div>
 
-<!-- МОДАЛКА ДЛЯ ВВОДА КОДА 1104 ПРИ ДЕЙСТВИЯХ С АККАУНТАМИ -->
 <div class="modal-overlay hidden" id="usersCodeModal">
   <div class="modal">
     <h3>Подтверждение действия</h3>
@@ -596,19 +602,74 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
   import { getDatabase, ref, push, set, onValue, update, get, remove } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyAvZIkCpFbH199-U2B6GUok3xzllCOtoJI",
-    authDomain: "zayavki-uvat.firebaseapp.com",
-    databaseURL: "https://zayavki-uvat-default-rtdb.firebaseio.com",
-    projectId: "zayavki-uvat",
-    storageBucket: "zayavki-uvat.firebasestorage.app",
-    messagingSenderId: "47596921826",
-    appId: "1:47596921826:web:f58d91bfd8a8487b734fbb",
-    measurementId: "G-KDQ9E3NP0V"
+  // ============================================================
+  //  КОНФИГУРАЦИИ БАЗ ДАННЫХ
+  // ============================================================
+  const DB_CONFIGS = {
+    uvat: {
+      label: 'Уватский проект',
+      config: {
+        apiKey: "AIzaSyAvZIkCpFbH199-U2B6GUok3xzllCOtoJI",
+        authDomain: "zayavki-uvat.firebaseapp.com",
+        databaseURL: "https://zayavki-uvat-default-rtdb.firebaseio.com",
+        projectId: "zayavki-uvat",
+        storageBucket: "zayavki-uvat.firebasestorage.app",
+        messagingSenderId: "47596921826",
+        appId: "1:47596921826:web:f58d91bfd8a8487b734fbb",
+        measurementId: "G-KDQ9E3NP0V"
+      }
+    },
+    ust: {
+      label: 'Усть-Тегусский проект',
+      config: {
+        apiKey: "AIzaSyAwf-lh-y9HFedWzv769A6ZdPP5ZGkCeJ4",
+        authDomain: "zayavki-ust-tegus.firebaseapp.com",
+        databaseURL: "https://zayavki-ust-tegus-default-rtdb.firebaseio.com",
+        projectId: "zayavki-ust-tegus",
+        storageBucket: "zayavki-ust-tegus.firebasestorage.app",
+        messagingSenderId: "200423554198",
+        appId: "1:200423554198:web:43623211f6f035a74916b7"
+      }
+    }
   };
 
-  const app = initializeApp(firebaseConfig);
+  // ============================================================
+  //  ВЫБОР АКТИВНОЙ БАЗЫ
+  // ============================================================
+  const urlParams = new URLSearchParams(window.location.search);
+  let dbKey = urlParams.get('db') || localStorage.getItem('active_db') || 'uvat';
+  if (!DB_CONFIGS[dbKey]) {
+    console.warn('Неизвестная база данных: ' + dbKey + ', переключаюсь на uvat');
+    dbKey = 'uvat';
+  }
+  localStorage.setItem('active_db', dbKey);
+
+  const ACTIVE_DB = DB_CONFIGS[dbKey];
+  document.title = 'Заявки — ' + ACTIVE_DB.label;
+
+  const app = initializeApp(ACTIVE_DB.config);
   const db = getDatabase(app);
+
+  const dbSwitcher = document.getElementById('dbSwitcher');
+  for (const key in DB_CONFIGS) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = DB_CONFIGS[key].label;
+    if (key === dbKey) opt.selected = true;
+    dbSwitcher.appendChild(opt);
+  }
+  dbSwitcher.addEventListener('change', function() {
+    const newKey = this.value;
+    localStorage.setItem('active_db', newKey);
+    const url = new URL(window.location.href);
+    url.searchParams.set('db', newKey);
+    window.location.href = url.toString();
+  });
+
+  const adminDbLabel = document.getElementById('adminDbLabel');
+  if (adminDbLabel) adminDbLabel.textContent = ACTIVE_DB.label;
+  const builderDbLabel = document.getElementById('builderDbLabel');
+  if (builderDbLabel) builderDbLabel.textContent = ACTIVE_DB.label;
 
   // ====== НАСТРОЙКИ ======
   var CHIEF_CODE = '7642';
@@ -617,7 +678,6 @@
   var CHIEF_ENGINEER_CODE = '2483';
   var CHIEF_ENGINEER_PANEL_CODE = '1104';
 
-  // Значения по умолчанию (если в базе ещё нет конфигурации)
   var DEFAULT_SERVICES = [
     { id: 'energy', name: 'Энергетик' },
     { id: 'kip', name: 'КИПиА' },
@@ -644,7 +704,6 @@
     { id: 'lead_engineer', name: 'Ведущий инженер', needsBrigade: false }
   ];
 
-  // Текущая конфигурация (заполняется из базы)
   var SERVICES = [];
   var BRIGADES = [];
   var MASTER_ROLES = [];
@@ -679,7 +738,6 @@
   var currentDetailServiceId = '';
   var currentDetailViewMode = 'master';
 
-  // ====== РОЛИ ======
   function isChiefEngineerMaster() { return loggedMaster.name && loggedMaster.roleName === 'Главный инженер'; }
   function isSeniorMaster()        { return loggedMaster.name && loggedMaster.roleName === 'Старший мастер'; }
   function isChiefEnergetic()      { return loggedMaster.name && loggedMaster.roleName === 'Главный энергетик'; }
@@ -741,7 +799,6 @@
     return '';
   }
 
-  // ====== УВЕДОМЛЕНИЯ ======
   var knownRequestIds = null;
   var audioCtx = null;
 
@@ -814,7 +871,6 @@
     showToast('🛢️ Новая заявка: ' + serviceName(req.serviceId));
   }
 
-  // ====== ЭЛЕМЕНТЫ ======
   var tabMaster = document.getElementById('tabMaster');
   var tabService = document.getElementById('tabService');
   var tabHistory = document.getElementById('tabHistory');
@@ -890,7 +946,6 @@
   var sendChatBtn = document.getElementById('sendChatBtn');
   var closeChatBtn = document.getElementById('closeChatBtn');
 
-  // CE panel elements
   var chiefEngineerGate = document.getElementById('chiefEngineerGate');
   var chiefEngineerPanel = document.getElementById('chiefEngineerPanel');
   var chiefEngineerPanelCode = document.getElementById('chiefEngineerPanelCode');
@@ -902,7 +957,6 @@
   var ceFilterStatus = document.getElementById('ceFilterStatus');
   var ceSearch = document.getElementById('ceSearch');
 
-  // Модалка для кода аккаунтов
   var usersCodeModal = document.getElementById('usersCodeModal');
   var usersCodeInput = document.getElementById('usersCodeInput');
   var confirmUsersCodeBtn = document.getElementById('confirmUsersCode');
@@ -946,7 +1000,6 @@
     return false;
   }
 
-  // ====== ТАЙМЕР ======
   function formatTime(ms) {
     if (ms < 0) ms = 0;
     var totalSec = Math.floor(ms / 1000);
@@ -1101,7 +1154,6 @@
   adminTabBuilder.addEventListener('click', function() { setAdminSubTab('builder'); });
   adminTabChiefEngineer.addEventListener('click', function() { setAdminSubTab('ce'); });
 
-  // ====== КОНСТРУКТОР: ЗАГРУЗКА И РЕНДЕР ======
   function saveConfig() {
     return set(ref(db, 'config'), {
       services: SERVICES,
@@ -1111,7 +1163,6 @@
   }
 
   function renderBuilder() {
-    // Службы
     var sHtml = '';
     for (var i = 0; i < SERVICES.length; i++) {
       var s = SERVICES[i];
@@ -1121,7 +1172,6 @@
     if (!SERVICES.length) sHtml = '<li class="empty">Нет служб</li>';
     document.getElementById('builderServicesList').innerHTML = sHtml;
 
-    // Бригады
     var bHtml = '';
     for (var j = 0; j < BRIGADES.length; j++) {
       bHtml += '<li><span class="name">' + escapeHtml(BRIGADES[j]) + '</span>' +
@@ -1130,7 +1180,6 @@
     if (!BRIGADES.length) bHtml = '<li class="empty">Нет бригад</li>';
     document.getElementById('builderBrigadesList').innerHTML = bHtml;
 
-    // Должности
     var rHtml = '';
     for (var k = 0; k < MASTER_ROLES.length; k++) {
       var r = MASTER_ROLES[k];
@@ -1141,7 +1190,6 @@
     if (!MASTER_ROLES.length) rHtml = '<li class="empty">Нет должностей</li>';
     document.getElementById('builderRolesList').innerHTML = rHtml;
 
-    // Обработчики удаления
     var delS = document.querySelectorAll('[data-del-service]');
     for (var a = 0; a < delS.length; a++) {
       delS[a].addEventListener('click', async function() {
@@ -1180,7 +1228,6 @@
     }
   }
 
-  // Добавление службы
   document.getElementById('addServiceBtn').addEventListener('click', async function() {
     var name = document.getElementById('newServiceName').value.trim();
     var id = document.getElementById('newServiceId').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -1197,7 +1244,6 @@
     showToast('Служба добавлена');
   });
 
-  // Добавление бригады
   document.getElementById('addBrigadeBtn').addEventListener('click', async function() {
     var name = document.getElementById('newBrigadeName').value.trim();
     if (!name) { showToast('Введите название бригады', true); return; }
@@ -1210,7 +1256,6 @@
     showToast('Бригада добавлена');
   });
 
-  // Добавление должности
   document.getElementById('addRoleBtn').addEventListener('click', async function() {
     var name = document.getElementById('newRoleName').value.trim();
     var needsBrigade = document.getElementById('newRoleNeedsBrigade').checked;
@@ -1226,9 +1271,7 @@
     showToast('Должность добавлена');
   });
 
-  // Обновление всех форм после изменения конфигурации
   function refreshAllForms() {
-    // Роли мастера
     var roleSel = document.getElementById('loginMasterRole');
     var curRole = roleSel.value;
     var html = '<option value="">— выберите вашу должность —</option>';
@@ -1236,7 +1279,6 @@
     roleSel.innerHTML = html;
     roleSel.value = curRole;
 
-    // Бригады мастера
     var briSel = document.getElementById('loginMasterBrigade');
     var curBri = briSel.value;
     var bhtml = '<option value="">— выберите вашу бригаду —</option>';
@@ -1244,7 +1286,6 @@
     briSel.innerHTML = bhtml;
     briSel.value = curBri;
 
-    // Службы для входа
     var srvSel = document.getElementById('loginServiceRole');
     var curSrv = srvSel.value;
     var shtml = '<option value="">— выберите вашу службу —</option>';
@@ -1252,20 +1293,16 @@
     srvSel.innerHTML = shtml;
     srvSel.value = curSrv;
 
-    // Службы для передачи
     var trSel = document.getElementById('transferServiceSelect');
     var trHtml = '';
     for (var m = 0; m < SERVICES.length; m++) trHtml += '<option value="' + escapeHtml(SERVICES[m].id) + '">' + escapeHtml(SERVICES[m].name) + '</option>';
     trSel.innerHTML = trHtml;
 
-    // Пикер служб в заявке
     renderServicePicker();
 
-    // Сетки служб
     if (loggedMaster.name && !masterWorkBlock.classList.contains('hidden')) renderServicesGrid(masterServicesGrid, 'master');
     if (loggedService.name && !serviceWorkBlock.classList.contains('hidden')) renderServicesGrid(serviceServicesGrid, 'service');
 
-    // Фильтры истории и CE
     fillHistoryFilters();
     if (isChiefEngineerPanelUnlocked) fillCeServiceFilter();
 
@@ -1284,7 +1321,6 @@
     fb.innerHTML = bopts; fb.value = fbVal;
   }
 
-  // ====== СОХРАНЁННЫЕ ДАННЫЕ ======
   function loadSavedCredentials() {
     var mName = localStorage.getItem('save_m_name');
     var mPhone = localStorage.getItem('save_m_phone');
@@ -1336,7 +1372,6 @@
     selectEl.innerHTML = html;
   }
 
-  // ====== ВЫБОР ДОЛЖНОСТИ ======
   document.getElementById('loginMasterRole').addEventListener('change', function() {
     var roleId = this.value;
     var role = MASTER_ROLES.find(r => r.id === roleId);
@@ -1350,7 +1385,6 @@
     }
   });
 
-  // ====== ВХОД МАСТЕРА ======
   document.getElementById('loginMasterBtn').addEventListener('click', async function() {
     var name = document.getElementById('loginMasterName').value.trim();
     var phone = document.getElementById('loginMasterPhone').value.trim();
@@ -1443,7 +1477,6 @@
     globalPendingAlert.classList.add('hidden');
   });
 
-  // ====== ВХОД СЛУЖБЫ ======
   document.getElementById('loginServiceBtn').addEventListener('click', async function() {
     var name = document.getElementById('loginServiceName').value.trim();
     var phone = document.getElementById('loginServicePhone').value.trim();
@@ -1492,7 +1525,6 @@
     servicePendingAlert.classList.add('hidden');
   });
 
-  // ====== ВХОД АДМИНА ======
   document.getElementById('adminLoginBtn').addEventListener('click', function() {
     var code = document.getElementById('adminCodeInput').value;
     if (code !== ADMIN_CODE) { showToast('Неверный код доступа', true); return; }
@@ -1527,7 +1559,6 @@
     showToast(newState ? 'Прием заявок остановлен' : 'Прием заявок возобновлен');
   });
 
-  // ====== АДМИН: ПОЛЬЗОВАТЕЛИ ======
   function renderAdminUsers() {
     var sortedUsers = allUsers.slice().sort(function(a,b) { return (b.createdAt || 0) - (a.createdAt || 0); });
     if (!sortedUsers.length) { moderationList.innerHTML = '<p class="empty">Пользователей пока нет.</p>'; return; }
@@ -1601,7 +1632,6 @@
     if (e.key === 'Enter') confirmUsersCodeBtn.click();
   });
 
-  // ====== АДМИН: ЗАЯВКИ ======
   function renderAdminRequests() {
     var activeEl = document.activeElement;
     var safeFocus = activeEl && activeEl.closest && activeEl.closest('#adminRequestsBlock');
@@ -1678,7 +1708,6 @@
     }
   }
 
-  // ====== СЕТКА СЛУЖБ ======
   function renderServicesGrid(container, mode) {
     var html = '';
     for (var j = 0; j < SERVICES.length; j++) {
@@ -1712,7 +1741,6 @@
     }
   }
 
-  // ====== "МОИ ЗАЯВКИ" ======
   function hasUnreadChat(r, myPhone) {
     var lastRead = localStorage.getItem('last_read_chat_' + r.id) || 0;
     var lastMsgTime = 0, lastMsgPhone = '';
@@ -1759,7 +1787,6 @@
     }
   }
 
-  // ====== ДЕТАЛИ ======
   function openServiceDetail(serviceId, mode) {
     currentDetailServiceId = serviceId; currentDetailViewMode = mode;
     detailTitle.textContent = serviceName(serviceId);
@@ -1839,7 +1866,6 @@
     else { masterView.classList.remove('hidden'); renderServicesGrid(masterServicesGrid, 'master'); }
   });
 
-  // ====== ДЕЙСТВИЯ ======
   async function handleAction(action, id) {
     var req = allRequests.find(function(item) { return item.id === id; });
     if (!req) return;
@@ -1914,7 +1940,6 @@
   });
   cancelTransferBtn.addEventListener('click', function() { transferModal.classList.add('hidden'); pendingTransferId = null; });
 
-  // ====== ЧАТ ======
   function openChat(requestId) {
     currentChatRequestId = requestId;
     var req = allRequests.find(function(r) { return r.id === requestId; });
@@ -1974,7 +1999,6 @@
     }
   });
 
-  // ====== ВЫБОР СЛУЖБЫ ======
   function renderServicePicker() {
     var html = '';
     for (var i = 0; i < SERVICES.length; i++) {
@@ -1993,7 +2017,6 @@
     }
   }
 
-  // ====== ОТПРАВКА ЗАЯВКИ ======
   document.getElementById('requestForm').addEventListener('submit', async function (e) {
     e.preventDefault();
     if (!loggedMaster.name) { showToast('Сначала войдите в систему', true); return; }
@@ -2054,7 +2077,6 @@
     return snapshot.val() === phone;
   }
 
-  // ====== ИСТОРИЯ ======
   function renderHistory() {
     fillHistoryFilters();
 
@@ -2111,7 +2133,7 @@
     var csv = '\uFEFF' + lines.join('\r\n');
     var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     var url = URL.createObjectURL(blob);
-    var a = document.createElement('a'); a.href = url; a.download = 'Заявки_Усть-Тегусский_проект.csv';
+    var a = document.createElement('a'); a.href = url; a.download = 'Заявки_' + dbKey + '.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     showToast('История выгружена в Excel (CSV).');
   }
@@ -2121,7 +2143,6 @@
   document.getElementById('filterBrigade').addEventListener('change', renderHistory);
   document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
 
-  // ====== ПАНЕЛЬ ГЛАВНОГО ИНЖЕНЕРА (код 1104) ======
   chiefEngineerPanelLoginBtn.addEventListener('click', function() {
     var code = (chiefEngineerPanelCode.value || '').trim();
     if (code !== CHIEF_ENGINEER_PANEL_CODE) {
@@ -2301,14 +2322,12 @@
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.download = 'Заявки_Главный_инженер.csv';
+    a.download = 'Заявки_Главный_инженер_' + dbKey + '.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('Выгрузка Главного инженера готова.');
   });
 
-  // ====== СЛУШАТЕЛИ БАЗЫ ======
-  // Конфигурация (службы, бригады, должности)
   onValue(ref(db, 'config'), (snapshot) => {
     var data = snapshot.val();
     if (data && data.services && Array.isArray(data.services) && data.services.length) SERVICES = data.services;
@@ -2377,7 +2396,6 @@
     if (isAdminLoggedIn && !adminWorkBlock.classList.contains('hidden')) renderAdminPanel();
   });
 
-  // Инициализация (пока конфиг не пришёл из базы — используем значения по умолчанию)
   SERVICES = DEFAULT_SERVICES.slice();
   BRIGADES = DEFAULT_BRIGADES.slice();
   MASTER_ROLES = DEFAULT_ROLES.slice();

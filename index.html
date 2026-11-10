@@ -917,18 +917,33 @@
     return false;
   }
 
+  // Хелперы для отображения службы и бригады
+  function requestServiceName(r) {
+    if (!r) return '—';
+    var n = serviceName(r.serviceId);
+    if (n === r.serviceId && r.serviceName) return r.serviceName;
+    return n;
+  }
+  function requestBrigadeLabel(r) {
+    if (!r) return '— не указана —';
+    var b = r.brigade;
+    if (b === undefined || b === null) return '— не указана —';
+    b = String(b).trim();
+    return b ? b : '— не указана —';
+  }
+
   function notifyNewRequest(req) {
     if (!isRequestForMe(req)) return;
     playDing();
     if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
       try {
-        var title = '🛢️ Новая заявка: ' + serviceName(req.serviceId);
-        var body = (req.brigade ? 'Бригада: ' + req.brigade + '\n' : '') + (req.desc ? req.desc.substring(0, 120) : '');
+        var title = '🛢️ Новая заявка: ' + requestServiceName(req);
+        var body = 'Бригада: ' + requestBrigadeLabel(req) + '\n' + (req.desc ? req.desc.substring(0, 120) : '');
         var n = new Notification(title, { body: body, tag: 'req-' + req.id });
         n.onclick = function() { window.focus(); n.close(); };
       } catch(e) {}
     }
-    showToast('🛢️ Новая заявка: ' + serviceName(req.serviceId));
+    showToast('🛢️ Новая заявка: ' + requestServiceName(req));
   }
 
   function taskBrigadesList(t) {
@@ -1822,9 +1837,16 @@
       var seniorMark = u.roleName === 'Старший мастер' ? ' · <span style="color:#7c3aed;font-weight:700;">СТАРШИЙ МАСТЕР</span>' : '';
       var drillerMark = u.roleName === 'Бурильщик' ? ' · <span style="color:#2563eb;font-weight:700;">БУРИЛЬЩИК</span>' : '';
 
+      // Отображение должности и бригады
+      var displayRole = escapeHtml(u.roleName || '—');
+      var displayBrigade = '';
+      if (u.role === 'master' && u.brigade && u.brigade !== 'Служба') {
+        displayBrigade = ' | <strong style="color:#1e3a8a;">' + escapeHtml(u.brigade) + '</strong>';
+      }
+
       usersHtml += '<div class="moderation-user ' + statusClass + '">';
       usersHtml += '<div class="info"><strong>' + escapeHtml(u.name) + '</strong> (' + escapeHtml(u.phone) + ')<br>';
-      usersHtml += '<span style="font-size:12px; color:#6b7280;">Роль: ' + (u.role === 'master' ? 'Мастер/ИТР' : 'Служба') + ' | ' + escapeHtml(u.roleName || u.brigade || '—') + ' | ' + statusText + chiefMark + seniorMark + drillerMark + '</span></div>';
+      usersHtml += '<span style="font-size:12px; color:#6b7280;">Роль: ' + (u.role === 'master' ? 'Мастер/ИТР' : 'Служба') + ' | ' + displayRole + displayBrigade + ' | ' + statusText + chiefMark + seniorMark + drillerMark + '</span></div>';
       usersHtml += '<div class="btns">';
       if (u.status !== 'approved') usersHtml += '<button class="btn green small" data-uid="' + u.id + '" data-action="approve">Одобрить</button>';
       if (u.status !== 'rejected') usersHtml += '<button class="btn red small" data-uid="' + u.id + '" data-action="reject">Отклонить</button>';
@@ -1885,7 +1907,7 @@
     var html = '';
     for (var k = 0; k < list.length; k++) {
       var r = list[k], status = r.status || 'new';
-      html += '<div class="request status-' + status + '"><div style="font-size:14px; margin-bottom: 4px;"><strong>Служба: ' + escapeHtml(serviceName(r.serviceId)) + '</strong> | <strong>Бригада: ' + escapeHtml(r.brigade || '—') + '</strong> (' + escapeHtml(r.name) + ', тел: ' + escapeHtml(r.phone) + ')<br>' + escapeHtml(r.desc) + '</div>';
+      html += '<div class="request status-' + status + '"><div style="font-size:14px; margin-bottom: 4px;"><strong>Служба: ' + escapeHtml(requestServiceName(r)) + '</strong> | <strong>Бригада: ' + escapeHtml(requestBrigadeLabel(r)) + '</strong> (' + escapeHtml(r.name || '—') + ', тел: ' + escapeHtml(r.phone || '—') + ')<br>' + escapeHtml(r.desc || '') + '</div>';
       html += '<div class="event-log"><div>🕒 Подана: ' + formatDate(r.createdAt) + '</div>';
       if (r.events && r.events.length) for (var e = 0; e < r.events.length; e++) html += '<div>' + escapeHtml(r.events[e].text) + ' (' + formatDate(r.events[e].time) + ')</div>';
       html += '</div><div class="actions">';
@@ -2193,7 +2215,11 @@
     var html = '';
     for (var i = 0; i < myList.length; i++) {
       var r = myList[i], status = r.status || 'new';
-      html += '<div class="request status-' + status + '"><div style="font-size:14px; margin-bottom: 4px;"><strong>Служба: ' + escapeHtml(serviceName(r.serviceId)) + '</strong><br>' + escapeHtml(r.desc) + '</div>';
+      var bName = requestBrigadeLabel(r);
+      html += '<div class="request status-' + status + '"><div style="font-size:14px; margin-bottom: 4px;">' +
+              '<strong>Служба: ' + escapeHtml(requestServiceName(r)) + '</strong>' +
+              (bName && bName !== '— не указана —' ? '<br><span style="font-size:12px;color:#6b7280;">Бригада: ' + escapeHtml(bName) + '</span>' : '') +
+              '<br>' + escapeHtml(r.desc || '') + '</div>';
       html += '<div class="event-log"><div>🕒 Подана: ' + formatDate(r.createdAt) + '</div>';
       if (r.events && r.events.length) for (var e = 0; e < r.events.length; e++) html += '<div>' + escapeHtml(r.events[e].text) + ' (' + formatDate(r.events[e].time) + ')</div>';
       html += '</div><div class="actions">';
@@ -2227,7 +2253,6 @@
     renderDetailRequests(serviceId, mode);
   }
 
-  // ====== СОРТИРОВКА: новые сверху (свежие первыми), закрытые снизу (свежие первыми) ======
   function renderDetailRequests(serviceId, mode) {
     var list = allRequests.filter(function (r) {
       if (r.serviceId !== serviceId) return false;
@@ -2238,8 +2263,8 @@
     list.sort(function (a, b) {
       var aClosed = (a.status === 'closed') ? 1 : 0;
       var bClosed = (b.status === 'closed') ? 1 : 0;
-      if (aClosed !== bClosed) return aClosed - bClosed; // сначала не закрытые (0), потом закрытые (1)
-      return (b.createdAt || 0) - (a.createdAt || 0);    // внутри группы — новые сверху
+      if (aClosed !== bClosed) return aClosed - bClosed;
+      return (b.createdAt || 0) - (a.createdAt || 0);
     });
 
     if (mode === 'master' && loggedMaster.name && (isNumberedBrigade(loggedMaster.brigade) || loggedMaster.roleName === 'Бурильщик')) {
@@ -2251,7 +2276,7 @@
     var html = '';
     for (var i = 0; i < list.length; i++) {
       var r = list[i], status = r.status || 'new';
-      html += '<div class="request status-' + status + '"><div style="font-size:14px; margin-bottom: 4px;"><strong>Бригада: ' + escapeHtml(r.brigade || '—') + '</strong> (' + escapeHtml(r.name) + ', тел: ' + escapeHtml(r.phone) + ')<br>' + escapeHtml(r.desc) + '</div>';
+      html += '<div class="request status-' + status + '"><div style="font-size:14px; margin-bottom: 4px;"><strong>Служба: ' + escapeHtml(requestServiceName(r)) + '</strong> | <strong>Бригада: ' + escapeHtml(requestBrigadeLabel(r)) + '</strong> (' + escapeHtml(r.name || '—') + ', тел: ' + escapeHtml(r.phone || '—') + ')<br>' + escapeHtml(r.desc || '') + '</div>';
       html += '<div class="event-log"><div>🕒 Подана: ' + formatDate(r.createdAt) + '</div>';
       if (r.events && r.events.length) for (var e = 0; e < r.events.length; e++) html += '<div>' + escapeHtml(r.events[e].text) + ' (' + formatDate(r.events[e].time) + ')</div>';
       html += '</div><div class="actions">';
@@ -2260,7 +2285,7 @@
           if (canMasterClose(r)) {
             html += '<button class="btn green small" data-action="closed" data-id="' + r.id + '">Мастер подтвердил</button>';
             html += '<button class="btn red small" data-action="return" data-id="' + r.id + '">Вернуть</button>';
-          } else { html += '<span class="badge wait">Ждёт мастера из ' + escapeHtml(r.brigade) + '</span>'; }
+          } else { html += '<span class="badge wait">Ждёт мастера из ' + escapeHtml(requestBrigadeLabel(r)) + '</span>'; }
         } else if (status === 'new') html += '<span class="badge">Ожидает выполнения службой</span>';
         else if (status === 'in_progress') html += '<span class="badge progress">Служба взяла в работу</span>';
         else if (status === 'closed') html += '<span class="badge ok">Закрыта</span>';
@@ -2359,7 +2384,7 @@
     if (newServiceId === req.serviceId) { showToast('Заявка уже в этой службе', true); return; }
     var ce = req.events || []; var ne = { text: '🔄 Передана в службу "' + serviceName(newServiceId) + '" (Сотрудник: ' + loggedService.name + ', Тел: ' + loggedService.phone + ')', time: Date.now() };
     transferModal.classList.add('hidden'); pendingTransferId = null;
-    await update(ref(db, 'requests/' + req.id), { serviceId: newServiceId, status: 'new', events: ce.concat([ne]) });
+    await update(ref(db, 'requests/' + req.id), { serviceId: newServiceId, serviceName: serviceName(newServiceId), status: 'new', events: ce.concat([ne]) });
     showToast('Заявка успешно передана.');
   });
   cancelTransferBtn.addEventListener('click', function() { transferModal.classList.add('hidden'); pendingTransferId = null; });
@@ -2367,7 +2392,7 @@
   function openChat(requestId) {
     currentChatRequestId = requestId;
     var req = allRequests.find(function(r) { return r.id === requestId; });
-    if (req) chatTitle.textContent = 'Чат по заявке: ' + serviceName(req.serviceId) + ' (' + (req.brigade || '—') + ')';
+    if (req) chatTitle.textContent = 'Чат по заявке: ' + requestServiceName(req) + ' (' + requestBrigadeLabel(req) + ')';
     chatInput.value = ''; chatModal.classList.remove('hidden');
     loadChatMessages(requestId); chatInput.focus();
   }
@@ -2444,8 +2469,14 @@
     submitBtn.disabled = true; submitBtn.textContent = 'Отправка...';
     try {
       await push(ref(db, 'requests'), {
-        serviceId: data.serviceId, brigade: data.brigade, name: data.name, phone: data.phone, desc: data.desc,
-        createdAt: Date.now(), status: 'new',
+        serviceId: data.serviceId,
+        serviceName: serviceName(data.serviceId),
+        brigade: data.brigade || '',
+        name: data.name,
+        phone: data.phone,
+        desc: data.desc,
+        createdAt: Date.now(),
+        status: 'new',
         events: [{ text: '📝 Заявка создана (Бригада: ' + (data.brigade || '—') + ', Должность: ' + (data.roleName || '—') + ', ' + data.name + ', Тел: ' + data.phone + ')', time: Date.now() }]
       });
       reqDescEl.value = ''; selectedServiceId = ''; renderServicePicker();
@@ -2501,7 +2532,7 @@
       var r = filtered[k], status = r.status || 'new';
       var historyText = '🕒 Подана: ' + formatDate(r.createdAt);
       if (r.events && r.events.length) for (var e = 0; e < r.events.length; e++) historyText += '<br>' + escapeHtml(r.events[e].text) + ' (' + formatDate(r.events[e].time) + ')';
-      rows += '<tr><td>' + formatDate(r.createdAt) + '</td><td>' + escapeHtml(serviceName(r.serviceId)) + '</td><td>' + escapeHtml(r.brigade || '—') + '</td><td>' + escapeHtml(r.name || '') + '<br><small>' + escapeHtml(r.phone || '') + '</small></td><td>' + escapeHtml(r.desc) + '</td><td class="status-' + status + '">' + statusLabel(status) + '</td><td style="font-size:12px;">' + historyText + '</td></tr>';
+      rows += '<tr><td>' + formatDate(r.createdAt) + '</td><td>' + escapeHtml(requestServiceName(r)) + '</td><td>' + escapeHtml(requestBrigadeLabel(r)) + '</td><td>' + escapeHtml(r.name || '') + '<br><small>' + escapeHtml(r.phone || '') + '</small></td><td>' + escapeHtml(r.desc || '') + '</td><td class="status-' + status + '">' + statusLabel(status) + '</td><td style="font-size:12px;">' + historyText + '</td></tr>';
     }
     document.getElementById('historyContent').innerHTML = '<table class="history-table"><thead><tr><th>Подана</th><th>Служба</th><th>Бригада</th><th>Мастер</th><th>Описание</th><th>Статус</th><th>Хронология</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
@@ -2520,7 +2551,7 @@
       var r = filtered[i], status = r.status || 'new';
       var historyText = 'Подана: ' + formatDate(r.createdAt);
       if (r.events && r.events.length) for (var e = 0; e < r.events.length; e++) historyText += ' | ' + r.events[e].text + ' (' + formatDate(r.events[e].time) + ')';
-      lines.push([formatDate(r.createdAt), serviceName(r.serviceId), r.brigade || '', r.name || '', r.phone || '', (r.desc || '').replace(/[\r\n;]+/g, ' '), statusLabel(status), historyText.replace(/[\r\n;]+/g, ' ')].join(';'));
+      lines.push([formatDate(r.createdAt), requestServiceName(r), r.brigade || '', r.name || '', r.phone || '', (r.desc || '').replace(/[\r\n;]+/g, ' '), statusLabel(status), historyText.replace(/[\r\n;]+/g, ' ')].join(';'));
     }
     var csv = '\uFEFF' + lines.join('\r\n');
     var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -2585,7 +2616,7 @@
     var html = '';
     for (var k = 0; k < list.length; k++) {
       var r = list[k], status = r.status || 'new';
-      html += '<div class="request status-' + status + '"><div style="font-size:14px; margin-bottom:4px;"><strong>Служба: ' + escapeHtml(serviceName(r.serviceId)) + '</strong> | <strong>Бригада: ' + escapeHtml(r.brigade || '—') + '</strong> (' + escapeHtml(r.name) + ', тел: ' + escapeHtml(r.phone) + ')<br>' + escapeHtml(r.desc) + '</div>';
+      html += '<div class="request status-' + status + '"><div style="font-size:14px; margin-bottom:4px;"><strong>Служба: ' + escapeHtml(requestServiceName(r)) + '</strong> | <strong>Бригада: ' + escapeHtml(requestBrigadeLabel(r)) + '</strong> (' + escapeHtml(r.name || '—') + ', тел: ' + escapeHtml(r.phone || '—') + ')<br>' + escapeHtml(r.desc || '') + '</div>';
       html += '<div class="event-log"><div>🕒 Подана: ' + formatDate(r.createdAt) + '</div>';
       if (r.events && r.events.length) for (var e = 0; e < r.events.length; e++) html += '<div>' + escapeHtml(r.events[e].text) + ' (' + formatDate(r.events[e].time) + ')</div>';
       html += '</div><div class="actions">';
@@ -2629,7 +2660,7 @@
     var lines = [['Подана', 'Служба', 'Бригада', 'Имя', 'Телефон', 'Описание', 'Статус'].join(';')];
     for (var i = 0; i < list.length; i++) {
       var r = list[i];
-      lines.push([formatDate(r.createdAt), serviceName(r.serviceId), r.brigade || '', r.name || '', r.phone || '', (r.desc || '').replace(/[\r\n;]+/g, ' '), statusLabel(r.status || 'new')].join(';'));
+      lines.push([formatDate(r.createdAt), requestServiceName(r), r.brigade || '', r.name || '', r.phone || '', (r.desc || '').replace(/[\r\n;]+/g, ' '), statusLabel(r.status || 'new')].join(';'));
     }
     var blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
     var url = URL.createObjectURL(blob);

@@ -917,7 +917,7 @@
     return false;
   }
 
-  // Универсальные хелперы для отображения службы и бригады
+  // Хелперы для отображения службы и бригады
   function requestServiceName(r) {
     if (!r) return '—';
     var n = serviceName(r.serviceId);
@@ -1754,7 +1754,8 @@
 
     if (existingUser) {
       if (existingUser.status === 'approved') {
-        await update(ref(db, 'users/' + existingUser.id), { name: name, role: role, brigade: 'Служба', dualRole: false });
+        // ИСПРАВЛЕНИЕ: Явно сохраняем roleName для службы
+        await update(ref(db, 'users/' + existingUser.id), { name: name, role: role, roleName: role, brigade: 'Служба', dualRole: false });
         loggedService = { name: name, phone: phone, role: role, status: 'approved' };
         showToast('Вы успешно вошли (данные обновлены).');
       } else if (existingUser.status === 'pending') {
@@ -1765,7 +1766,8 @@
       }
     } else {
       var newRef2 = push(ref(db, 'users'));
-      await set(newRef2, { name: name, phone: phone, role: role, brigade: 'Служба', status: 'pending', createdAt: Date.now(), dualRole: false });
+      // ИСПРАВЛЕНИЕ: Явно сохраняем roleName для службы
+      await set(newRef2, { name: name, phone: phone, role: role, roleName: role, brigade: 'Служба', status: 'pending', createdAt: Date.now(), dualRole: false });
       loggedService = { name: name, phone: phone, role: role, status: 'pending' };
       showToast('Регистрация отправлена. Ожидайте подтверждения.');
     }
@@ -1837,8 +1839,13 @@
       var seniorMark = u.roleName === 'Старший мастер' ? ' · <span style="color:#7c3aed;font-weight:700;">СТАРШИЙ МАСТЕР</span>' : '';
       var drillerMark = u.roleName === 'Бурильщик' ? ' · <span style="color:#2563eb;font-weight:700;">БУРИЛЬЩИК</span>' : '';
 
-      // Отображаем должность и бригаду
-      var displayRole = escapeHtml(u.roleName || '—');
+      // ИСПРАВЛЕНИЕ: Отображаем службу для старых аккаунтов, где не было roleName
+      var roleLabel = u.roleName;
+      if (u.role === 'Служба' && !roleLabel) {
+        roleLabel = u.role; // берем название службы из поля role
+      }
+      var displayRole = escapeHtml(roleLabel || '—');
+      
       var displayBrigade = '';
       if (u.role === 'master' && u.brigade && u.brigade !== 'Служба') {
         displayBrigade = ' | <strong style="color:#1e3a8a;">' + escapeHtml(u.brigade) + '</strong>';

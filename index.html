@@ -1841,8 +1841,8 @@
 
       // ИСПРАВЛЕНИЕ: Отображаем службу для старых аккаунтов, где не было roleName
       var roleLabel = u.roleName;
-      if (u.role === 'Служба' && !roleLabel) {
-        roleLabel = u.role; // берем название службы из поля role
+      if (u.role === 'Служба' && (!roleLabel || roleLabel === 'Служба')) {
+        roleLabel = u.role; // берем название службы из поля role, если roleName пустое или равно "Служба"
       }
       var displayRole = escapeHtml(roleLabel || '—');
       

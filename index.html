@@ -214,8 +214,14 @@
   .moderation-user { background: #fff; padding: 12px; border-radius: 6px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.05); border-left: 4px solid #f59e0b; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
   .moderation-user.approved { border-left-color: #10b981; }
   .moderation-user.rejected { border-left-color: #ef4444; opacity: 0.6; }
+  .moderation-user.security-alert { border-left-color: #dc2626; background: #fef2f2; opacity: 1; }
   .moderation-user .info { flex: 1; min-width: 200px; }
   .moderation-user .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .security-block { border: 2px solid #fecaca; background: #fef2f2; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  .security-block h3 { color: #991b1b; font-size: 15px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .security-block .security-hint { font-size: 12px; color: #7f1d1d; margin-bottom: 10px; }
+  .warning-icon { color: #dc2626; font-weight: 900; margin-left: 6px; cursor: help; }
 
   .chat-window { display: flex; flex-direction: column; height: 400px; }
   .chat-messages { flex: 1; overflow-y: auto; background: #f8fafc; border-radius: 8px; padding: 10px; margin-bottom: 10px; border: 1px solid #e5e7eb; }
@@ -495,6 +501,12 @@
         <div class="card" style="border-left: 4px solid #f59e0b;">
           <h2>Реестр пользователей</h2>
           <p style="color: #6b7280; font-size: 13px; margin-bottom: 12px;">Подтверждайте новых пользователей.</p>
+          <div id="securityAlertsBlock" class="security-block hidden">
+            <h3>⚠ Попытки входа под чужим номером</h3>
+            <p class="security-hint">Здесь фиксируются случаи, когда под телефоном, уже привязанным к мастеру/ИТР, пытались войти как сотрудник службы (или наоборот).</p>
+            <div id="securityAlertsList"></div>
+            <button class="btn red small" id="clearSecurityAlertsBtn" style="margin-top:8px;">Очистить все</button>
+          </div>
           <div id="moderationList"></div>
         </div>
       </div>
@@ -780,6 +792,7 @@
   var allRequests = [];
   var allUsers = [];
   var allTasks = [];
+  var allSecurityAlerts = [];
   var settings = {
     isManuallyClosed: false,
     intervals: [
@@ -1070,6 +1083,9 @@
   var globalPendingAlert = document.getElementById('globalPendingAlert');
   var submitBtn = document.getElementById('submitBtn');
   var moderationList = document.getElementById('moderationList');
+  var securityAlertsBlock = document.getElementById('securityAlertsBlock');
+  var securityAlertsList = document.getElementById('securityAlertsList');
+  var clearSecurityAlertsBtn = document.getElementById('clearSecurityAlertsBtn');
   var masterServicesGrid = document.getElementById('masterServicesGrid');
   var serviceServicesGrid = document.getElementById('serviceServicesGrid');
   var detailRequestsList = document.getElementById('detailRequestsList');
@@ -1664,6 +1680,15 @@
     }
   });
 
+  // ===== НОВАЯ ФУНКЦИЯ: фиксация попытки входа под чужим номером =====
+  async function logSecurityAlert(alertData) {
+    try {
+      await push(ref(db, 'security_alerts'), alertData);
+    } catch(e) {
+      console.warn('Не удалось записать security alert', e);
+    }
+  }
+
   document.getElementById('loginMasterBtn').addEventListener('click', async function() {
     var name = document.getElementById('loginMasterName').value.trim();
     var phone = document.getElementById('loginMasterPhone').value.trim();
@@ -1680,6 +1705,27 @@
 
     var roleName = roleObj.name;
 
+    // НОВОЕ: проверка, не занят ли телефон аккаунтом службы
+    var conflict = allUsers.find(function(u) {
+      return u.phone === phone && (u.role === 'Служба' || u.roleName === 'Служба');
+    });
+    if (conflict) {
+      await logSecurityAlert({
+        type: 'role_conflict',
+        phone: phone,
+        attemptedRole: 'master',
+        attemptedRoleName: roleName,
+        attemptedName: name,
+        attemptedBrigade: brigade || '',
+        existingName: conflict.name,
+        existingRoleName: conflict.roleName || conflict.role || 'Служба',
+        existingBrigade: conflict.brigade || '',
+        createdAt: Date.now()
+      });
+      showToast('Этот номер уже зарегистрирован как сотрудник службы. Вход как мастер/ИТР запрещён.', true);
+      return;
+    }
+
     if (roleName === 'Главный инженер') {
       pendingChiefEngineerReg = { name: name, phone: phone, role: roleId, roleName: roleName, brigade: '' };
       chiefEngineerCodeInput.value = '';
@@ -1695,7 +1741,10 @@
 
     if (existingUser) {
       if (existingUser.status === 'approved') {
-        await update(ref(db, 'users/' + existingUser.id), { name: name, roleId: roleId, roleName: roleName, brigade: brigade, role: 'master', dualRole: false });
+        // НОВОЕ: обновляем только если роль записи — master
+        if (existingUser.role === 'master' || existingUser.role === undefined) {
+          await update(ref(db, 'users/' + existingUser.id), { name: name, roleId: roleId, roleName: roleName, brigade: brigade, role: 'master', dualRole: false });
+        }
         loggedMaster = { name: name, phone: phone, brigade: brigade, role: roleId, roleName: roleName, status: 'approved' };
         showToast('Вы успешно вошли (данные обновлены).');
       } else if (existingUser.status === 'pending') {
@@ -1766,12 +1815,35 @@
     if (!phone) { showToast('Введите телефон', true); return; }
     if (!role) { showToast('Выберите службу', true); return; }
 
+    // НОВОЕ: проверка, не занят ли телефон аккаунтом мастера/ИТР
+    var conflict = allUsers.find(function(u) {
+      return u.phone === phone && u.role === 'master';
+    });
+    if (conflict) {
+      await logSecurityAlert({
+        type: 'role_conflict',
+        phone: phone,
+        attemptedRole: 'service',
+        attemptedRoleName: role,
+        attemptedName: name,
+        attemptedBrigade: '',
+        existingName: conflict.name,
+        existingRoleName: conflict.roleName || 'Мастер/ИТР',
+        existingBrigade: conflict.brigade || '',
+        createdAt: Date.now()
+      });
+      showToast('Этот номер уже зарегистрирован как мастер/ИТР. Вход в службу запрещён.', true);
+      return;
+    }
+
     var existingUser = allUsers.find(function(u) { return u.phone === phone; });
 
     if (existingUser) {
       if (existingUser.status === 'approved') {
-        // ИСПРАВЛЕНИЕ: Явно сохраняем roleName для службы
-        await update(ref(db, 'users/' + existingUser.id), { name: name, role: role, roleName: role, brigade: 'Служба', dualRole: false });
+        // НОВОЕ: обновляем только если роль записи — Служба
+        if (existingUser.role === 'Служба' || existingUser.roleName === 'Служба') {
+          await update(ref(db, 'users/' + existingUser.id), { name: name, role: role, roleName: role, brigade: 'Служба', dualRole: false });
+        }
         loggedService = { name: name, phone: phone, role: role, status: 'approved' };
         showToast('Вы успешно вошли (данные обновлены).');
       } else if (existingUser.status === 'pending') {
@@ -1782,7 +1854,6 @@
       }
     } else {
       var newRef2 = push(ref(db, 'users'));
-      // ИСПРАВЛЕНИЕ: Явно сохраняем roleName для службы
       await set(newRef2, { name: name, phone: phone, role: role, roleName: role, brigade: 'Служба', status: 'pending', createdAt: Date.now(), dualRole: false });
       loggedService = { name: name, phone: phone, role: role, status: 'pending' };
       showToast('Регистрация отправлена. Ожидайте подтверждения.');
@@ -1843,8 +1914,59 @@
     showToast(newState ? 'Прием заявок остановлен' : 'Прием заявок возобновлен');
   });
 
+  // ===== НОВЫЙ РЕНДЕР: алерты безопасности + значки у пользователей =====
+  function renderSecurityAlerts() {
+    if (!securityAlertsBlock || !securityAlertsList) return;
+    if (!allSecurityAlerts.length) {
+      securityAlertsBlock.classList.add('hidden');
+      securityAlertsList.innerHTML = '';
+      return;
+    }
+    securityAlertsBlock.classList.remove('hidden');
+    var sorted = allSecurityAlerts.slice().sort(function(a,b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    var html = '';
+    for (var i = 0; i < sorted.length; i++) {
+      var a = sorted[i];
+      var existingLabel = (a.existingRoleName || a.existingRole || '—');
+      if (a.existingBrigade) existingLabel += ' · ' + a.existingBrigade;
+      var attemptedLabel = (a.attemptedRoleName || a.attemptedRole || '—');
+      html += '<div class="moderation-user security-alert">' +
+              '<div class="info"><strong>⚠ Конфликт роли</strong><br>' +
+              '<span style="font-size:12px;color:#6b7280;">' +
+              'Телефон: <strong>' + escapeHtml(a.phone || '') + '</strong><br>' +
+              'Попытка входа: ' + escapeHtml(attemptedLabel) + ' (' + escapeHtml(a.attemptedName || '—') + ')<br>' +
+              'Уже зарегистрирован как: ' + escapeHtml(existingLabel) + ' (' + escapeHtml(a.existingName || '—') + ')<br>' +
+              '🕒 ' + formatDate(a.createdAt) + '</span></div>' +
+              '<div class="btns"><button class="btn red small" data-alert-del="' + a.id + '">Удалить</button></div></div>';
+    }
+    securityAlertsList.innerHTML = html;
+    securityAlertsList.querySelectorAll('[data-alert-del]').forEach(function(b) {
+      b.addEventListener('click', async function() {
+        await remove(ref(db, 'security_alerts/' + this.getAttribute('data-alert-del')));
+        showToast('Запись удалена');
+      });
+    });
+  }
+
+  clearSecurityAlertsBtn.addEventListener('click', async function() {
+    if (!allSecurityAlerts.length) { showToast('Список уже пуст', true); return; }
+    if (!confirm('Очистить все записи о попытках входа?')) return;
+    await remove(ref(db, 'security_alerts'));
+    showToast('Все записи очищены');
+  });
+
+  function phonesWithSecurityAlert() {
+    var map = {};
+    for (var i = 0; i < allSecurityAlerts.length; i++) {
+      if (allSecurityAlerts[i].phone) map[allSecurityAlerts[i].phone] = true;
+    }
+    return map;
+  }
+
   function renderAdminUsers() {
     var sortedUsers = allUsers.slice().sort(function(a,b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    var alertPhones = phonesWithSecurityAlert();
+    renderSecurityAlerts();
     if (!sortedUsers.length) { moderationList.innerHTML = '<p class="empty">Пользователей пока нет.</p>'; return; }
     var usersHtml = '';
     for (var i = 0; i < sortedUsers.length; i++) {
@@ -1854,6 +1976,7 @@
       var chiefMark = u.roleName === 'Главный инженер' ? ' · <span style="color:#dc2626;font-weight:700;">ГЛАВНЫЙ ИНЖЕНЕР</span>' : '';
       var seniorMark = u.roleName === 'Старший мастер' ? ' · <span style="color:#7c3aed;font-weight:700;">СТАРШИЙ МАСТЕР</span>' : '';
       var drillerMark = u.roleName === 'Бурильщик' ? ' · <span style="color:#2563eb;font-weight:700;">БУРИЛЬЩИК</span>' : '';
+      var securityMark = alertPhones[u.phone] ? ' <span class="warning-icon" title="По этому номеру зафиксированы попытки входа под чужой ролью">⚠</span>' : '';
 
       var roleLabel = u.roleName;
       if (u.role === 'Служба' && (!roleLabel || roleLabel === 'Служба')) {
@@ -1867,7 +1990,7 @@
       }
 
       usersHtml += '<div class="moderation-user ' + statusClass + '">';
-      usersHtml += '<div class="info"><strong>' + escapeHtml(u.name) + '</strong> (' + escapeHtml(u.phone) + ')<br>';
+      usersHtml += '<div class="info"><strong>' + escapeHtml(u.name) + '</strong>' + securityMark + ' (' + escapeHtml(u.phone) + ')<br>';
       usersHtml += '<span style="font-size:12px; color:#6b7280;">Роль: ' + (u.role === 'master' ? 'Мастер/ИТР' : 'Служба') + ' | ' + displayRole + displayBrigade + ' | ' + statusText + chiefMark + seniorMark + drillerMark + '</span></div>';
       usersHtml += '<div class="btns">';
       if (u.status !== 'approved') usersHtml += '<button class="btn green small" data-uid="' + u.id + '" data-action="approve">Одобрить</button>';
@@ -2790,6 +2913,16 @@
       updateUIState();
     }
     if (isAdminLoggedIn && !adminWorkBlock.classList.contains('hidden')) renderAdminPanel();
+  });
+
+  // НОВОЕ: слушатель алертов безопасности
+  onValue(ref(db, 'security_alerts'), (snapshot) => {
+    var data = snapshot.val();
+    allSecurityAlerts = [];
+    if (data) for (var key in data) allSecurityAlerts.push({ id: key, ...data[key] });
+    if (isAdminLoggedIn && !adminWorkBlock.classList.contains('hidden') && !adminUsersBlock.classList.contains('hidden')) {
+      renderAdminUsers();
+    }
   });
 
   SERVICES = DEFAULT_SERVICES.slice();

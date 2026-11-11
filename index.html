@@ -835,6 +835,30 @@
     return /^Бригада\s+\d+$/.test(String(brigade || '').trim());
   }
 
+  // ===== СТРОГАЯ КЛАССИФИКАЦИЯ ЗАПИСЕЙ =====
+  // Мастер/ИТР — если role === 'master' или roleName совпадает с любой должностью из MASTER_ROLES
+  function isMasterLikeUser(u) {
+    if (!u) return false;
+    if (u.role === 'master') return true;
+    if (u.roleName) {
+      for (var i = 0; i < MASTER_ROLES.length; i++) {
+        if (MASTER_ROLES[i].name === u.roleName) return true;
+      }
+    }
+    return false;
+  }
+
+  // Служба — если role === 'Служба', roleName === 'Служба' или role совпадает с названием службы
+  function isServiceUser(u) {
+    if (!u) return false;
+    if (u.role === 'Служба') return true;
+    if (u.roleName === 'Служба') return true;
+    for (var i = 0; i < SERVICES.length; i++) {
+      if (u.role === SERVICES[i].name) return true;
+    }
+    return false;
+  }
+
   function canMasterSeeRequest(req) {
     if (isAdminLoggedIn) return true;
     if (isChiefEngineerPanelUnlocked) return true;
@@ -1680,7 +1704,7 @@
     }
   });
 
-  // ===== НОВАЯ ФУНКЦИЯ: фиксация попытки входа под чужим номером =====
+  // ===== Фиксация попытки входа под чужим номером =====
   async function logSecurityAlert(alertData) {
     try {
       await push(ref(db, 'security_alerts'), alertData);
@@ -1705,9 +1729,9 @@
 
     var roleName = roleObj.name;
 
-    // НОВОЕ: проверка, не занят ли телефон аккаунтом службы
+    // ЖЁСТКАЯ проверка: телефон уже принадлежит службе?
     var conflict = allUsers.find(function(u) {
-      return u.phone === phone && (u.role === 'Служба' || u.roleName === 'Служба');
+      return u.phone === phone && isServiceUser(u);
     });
     if (conflict) {
       await logSecurityAlert({
@@ -1737,12 +1761,33 @@
   });
 
   async function processMasterLogin(name, phone, roleId, roleName, brigade) {
+    // ЖЁСТКАЯ проверка ещё раз (на случай прямого вызова)
+    var serviceConflict = allUsers.find(function(u) {
+      return u.phone === phone && isServiceUser(u);
+    });
+    if (serviceConflict) {
+      await logSecurityAlert({
+        type: 'role_conflict',
+        phone: phone,
+        attemptedRole: 'master',
+        attemptedRoleName: roleName,
+        attemptedName: name,
+        attemptedBrigade: brigade || '',
+        existingName: serviceConflict.name,
+        existingRoleName: serviceConflict.roleName || serviceConflict.role || 'Служба',
+        existingBrigade: serviceConflict.brigade || '',
+        createdAt: Date.now()
+      });
+      showToast('Этот номер уже зарегистрирован как сотрудник службы. Вход как мастер/ИТР запрещён.', true);
+      return;
+    }
+
     var existingUser = allUsers.find(function(u) { return u.phone === phone; });
 
     if (existingUser) {
       if (existingUser.status === 'approved') {
-        // НОВОЕ: обновляем только если роль записи — master
-        if (existingUser.role === 'master' || existingUser.role === undefined) {
+        // Обновляем только если запись — мастер/ИТР
+        if (isMasterLikeUser(existingUser)) {
           await update(ref(db, 'users/' + existingUser.id), { name: name, roleId: roleId, roleName: roleName, brigade: brigade, role: 'master', dualRole: false });
         }
         loggedMaster = { name: name, phone: phone, brigade: brigade, role: roleId, roleName: roleName, status: 'approved' };
@@ -1815,9 +1860,9 @@
     if (!phone) { showToast('Введите телефон', true); return; }
     if (!role) { showToast('Выберите службу', true); return; }
 
-    // НОВОЕ: проверка, не занят ли телефон аккаунтом мастера/ИТР
+    // ЖЁСТКАЯ проверка: телефон уже принадлежит мастеру/ИТР?
     var conflict = allUsers.find(function(u) {
-      return u.phone === phone && u.role === 'master';
+      return u.phone === phone && isMasterLikeUser(u);
     });
     if (conflict) {
       await logSecurityAlert({
@@ -1840,8 +1885,8 @@
 
     if (existingUser) {
       if (existingUser.status === 'approved') {
-        // НОВОЕ: обновляем только если роль записи — Служба
-        if (existingUser.role === 'Служба' || existingUser.roleName === 'Служба') {
+        // Обновляем только если запись — служба
+        if (isServiceUser(existingUser)) {
           await update(ref(db, 'users/' + existingUser.id), { name: name, role: role, roleName: role, brigade: 'Служба', dualRole: false });
         }
         loggedService = { name: name, phone: phone, role: role, status: 'approved' };
@@ -1914,7 +1959,7 @@
     showToast(newState ? 'Прием заявок остановлен' : 'Прием заявок возобновлен');
   });
 
-  // ===== НОВЫЙ РЕНДЕР: алерты безопасности + значки у пользователей =====
+  // ===== Блок алертов безопасности + значки у пользователей =====
   function renderSecurityAlerts() {
     if (!securityAlertsBlock || !securityAlertsList) return;
     if (!allSecurityAlerts.length) {
@@ -1978,20 +2023,22 @@
       var drillerMark = u.roleName === 'Бурильщик' ? ' · <span style="color:#2563eb;font-weight:700;">БУРИЛЬЩИК</span>' : '';
       var securityMark = alertPhones[u.phone] ? ' <span class="warning-icon" title="По этому номеру зафиксированы попытки входа под чужой ролью">⚠</span>' : '';
 
+      var roleKind = isMasterLikeUser(u) ? 'Мастер/ИТР' : (isServiceUser(u) ? 'Служба' : '—');
+
       var roleLabel = u.roleName;
-      if (u.role === 'Служба' && (!roleLabel || roleLabel === 'Служба')) {
+      if (isServiceUser(u) && (!roleLabel || roleLabel === 'Служба')) {
         roleLabel = u.role;
       }
       var displayRole = escapeHtml(roleLabel || '—');
 
       var displayBrigade = '';
-      if (u.role === 'master' && u.brigade && u.brigade !== 'Служба') {
+      if (isMasterLikeUser(u) && u.brigade && u.brigade !== 'Служба') {
         displayBrigade = ' | <strong style="color:#1e3a8a;">' + escapeHtml(u.brigade) + '</strong>';
       }
 
       usersHtml += '<div class="moderation-user ' + statusClass + '">';
       usersHtml += '<div class="info"><strong>' + escapeHtml(u.name) + '</strong>' + securityMark + ' (' + escapeHtml(u.phone) + ')<br>';
-      usersHtml += '<span style="font-size:12px; color:#6b7280;">Роль: ' + (u.role === 'master' ? 'Мастер/ИТР' : 'Служба') + ' | ' + displayRole + displayBrigade + ' | ' + statusText + chiefMark + seniorMark + drillerMark + '</span></div>';
+      usersHtml += '<span style="font-size:12px; color:#6b7280;">Роль: ' + roleKind + ' | ' + displayRole + displayBrigade + ' | ' + statusText + chiefMark + seniorMark + drillerMark + '</span></div>';
       usersHtml += '<div class="btns">';
       if (u.status !== 'approved') usersHtml += '<button class="btn green small" data-uid="' + u.id + '" data-action="approve">Одобрить</button>';
       if (u.status !== 'rejected') usersHtml += '<button class="btn red small" data-uid="' + u.id + '" data-action="reject">Отклонить</button>';
@@ -2915,7 +2962,6 @@
     if (isAdminLoggedIn && !adminWorkBlock.classList.contains('hidden')) renderAdminPanel();
   });
 
-  // НОВОЕ: слушатель алертов безопасности
   onValue(ref(db, 'security_alerts'), (snapshot) => {
     var data = snapshot.val();
     allSecurityAlerts = [];

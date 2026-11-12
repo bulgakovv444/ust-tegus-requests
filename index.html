@@ -841,7 +841,7 @@
   var currentDetailServiceId = '';
   var currentDetailViewMode = 'master';
 
-  // ===== НОВОЕ СОСТОЯНИЕ ФОРМЫ ЗАДАНИЯ =====
+  // ===== СОСТОЯНИЕ ФОРМЫ ЗАДАНИЯ =====
   var taskAudience = 'brigade';        // 'brigade' | 'itr'
   var taskTargetType = 'all';          // 'all' | 'custom'
   var selectedBrigadesForTask = {};
@@ -852,12 +852,13 @@
   function isChiefEngineerMaster() { return loggedMaster.name && loggedMaster.roleName === 'Главный инженер'; }
   function isSeniorMaster()        { return loggedMaster.name && loggedMaster.roleName === 'Старший мастер'; }
   function isChiefEnergetic()      { return loggedMaster.name && loggedMaster.roleName === 'Главный энергетик'; }
+  function isTechnologist()        { return loggedMaster.name && loggedMaster.roleName === 'Технолог'; }
 
   function isNumberedBrigade(brigade) {
     return /^Бригада\s+\d+$/.test(String(brigade || '').trim());
   }
 
-  // ===== СТРОГАЯ КЛАССИФИКАЦИЯ ЗАПИСЕЙ =====
+  // ===== КЛАССИФИКАЦИЯ =====
   function isMasterLikeUser(u) {
     if (!u) return false;
     if (u.role === 'master') return true;
@@ -879,7 +880,7 @@
     return false;
   }
 
-  // ===== ХЕЛПЕРЫ РАЗДЕЛЕНИЯ БРИГАД / ИТР =====
+  // ===== ХЕЛПЕРЫ БРИГАД / ИТР =====
   function masterHasBrigade() {
     if (!loggedMaster.name) return false;
     if (!loggedMaster.brigade) return false;
@@ -889,7 +890,6 @@
     return BRIGADES.indexOf(b) !== -1;
   }
 
-  // ИТР — должность из MASTER_ROLES с needsBrigade=false, кроме «Бурильщик»
   function isITRRole(roleName) {
     if (!roleName) return false;
     if (roleName === 'Бурильщик') return false;
@@ -904,18 +904,14 @@
     return isITRRole(loggedMaster.roleName);
   }
 
-  // «Мастер бригады» — должность ТРЕБУЕТ выбора бригады (needsBrigade: true),
-  // это не бурильщик, и у пользователя есть реальная бригада из списка.
   function isBrigadeMasterUser() {
     if (!loggedMaster.name) return false;
     if (!loggedMaster.roleName) return false;
     if (loggedMaster.roleName === 'Бурильщик') return false;
-
     var roleObj = MASTER_ROLES.find(function(r) { return r.name === loggedMaster.roleName; });
     if (!roleObj) return false;
-    if (!roleObj.needsBrigade) return false;      // ИТР (Главный энергетик и др.) — отсекаем
-
-    return masterHasBrigade();                     // есть реальная бригада из списка
+    if (!roleObj.needsBrigade) return false;
+    return masterHasBrigade();
   }
 
   function canMasterSeeRequest(req) {
@@ -924,17 +920,20 @@
     if (!loggedMaster.name) return true;
     if (isChiefEngineerMaster()) return true;
     if (isSeniorMaster()) return true;
-
+    if (isTechnologist()) return true;
     if (isNumberedBrigade(loggedMaster.brigade) || loggedMaster.roleName === 'Бурильщик') {
       return req.brigade === loggedMaster.brigade;
     }
     return true;
   }
 
+  // ===== КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: технолог может закрывать любые заявки =====
   function canMasterClose(req) {
     if (isAdminLoggedIn) return true;
     if (isChiefEngineerMaster()) return true;
     if (isSeniorMaster()) return true;
+    // Технолог — может закрывать / подтверждать заявки любой бригады
+    if (isTechnologist()) return true;
     if (isChiefEnergetic()) {
       if (req.phone === loggedMaster.phone) return true;
       if (req.serviceId === 'energy' || req.serviceId === 'kip') return true;
@@ -1021,6 +1020,7 @@
     if (isChiefEnergetic() && (req.serviceId === 'energy' || req.serviceId === 'kip')) return true;
     if (isChiefEngineerMaster()) return true;
     if (isSeniorMaster()) return true;
+    if (isTechnologist()) return true;
     if (loggedService.role && loggedService.status === 'approved') {
       for (var i = 0; i < SERVICES.length; i++) {
         if (SERVICES[i].name === loggedService.role && SERVICES[i].id === req.serviceId) return true;
@@ -1063,15 +1063,12 @@
     return (t.targetBrigades || []).slice();
   }
 
-  // ===== КЛЮЧЕВАЯ ЛОГИКА РАЗДЕЛЕНИЯ ЗАДАНИЙ =====
+  // ===== ФИЛЬТРАЦИЯ ЗАДАНИЙ =====
   function isTaskForMe(task) {
     if (!loggedMaster.name) return false;
     if (task.status === 'closed') return false;
 
-    // ---- Ветка БРИГАД ----
     if (task.audience !== 'itr') {
-      // Жёстко: только «мастер бригады» (должность требует бригады,
-      // есть реальная бригада из списка, не бурильщик).
       if (!isBrigadeMasterUser()) return false;
       if (task.targetType === 'all') {
         return BRIGADES.indexOf(loggedMaster.brigade) !== -1;
@@ -1079,7 +1076,6 @@
       return (task.targetBrigades || []).indexOf(loggedMaster.brigade) !== -1;
     }
 
-    // ---- Ветка ИТР ----
     if (!isITRUser()) return false;
     if (task.targetType === 'all') return true;
     return (task.targetRoles || []).indexOf(loggedMaster.roleName) !== -1;
@@ -1538,7 +1534,6 @@
     });
   });
 
-  // Переключение «Все / Выборочно»
   document.querySelectorAll('.task-target-btn[data-target]').forEach(function(btn) {
     btn.addEventListener('click', function() {
       document.querySelectorAll('.task-target-btn[data-target]').forEach(function(b) { b.classList.remove('active'); });
@@ -1672,7 +1667,6 @@
     renderBuilder(); refreshAllForms(); showToast('Должность добавлена');
   });
 
-  // ===== ЧЕК-ЛИСТ БРИГАД =====
   function renderBrigadeCheckboxes() {
     var cur = selectedBrigadesForTask;
     var html = '';
@@ -1691,7 +1685,6 @@
     });
   }
 
-  // ===== ЧЕК-ЛИСТ ДОЛЖНОСТЕЙ ИТР (исключён «Бурильщик») =====
   function renderRoleCheckboxes() {
     var itrRoles = MASTER_ROLES.filter(function(r) {
       return r.name !== 'Бурильщик' && !r.needsBrigade;
@@ -2165,6 +2158,7 @@
       var chiefMark = u.roleName === 'Главный инженер' ? ' · <span style="color:#dc2626;font-weight:700;">ГЛАВНЫЙ ИНЖЕНЕР</span>' : '';
       var seniorMark = u.roleName === 'Старший мастер' ? ' · <span style="color:#7c3aed;font-weight:700;">СТАРШИЙ МАСТЕР</span>' : '';
       var drillerMark = u.roleName === 'Бурильщик' ? ' · <span style="color:#2563eb;font-weight:700;">БУРИЛЬЩИК</span>' : '';
+      var technologistMark = u.roleName === 'Технолог' ? ' · <span style="color:#0d9488;font-weight:700;">ТЕХНОЛОГ</span>' : '';
       var securityMark = alertPhones[u.phone] ? ' <span class="warning-icon" title="По этому номеру зафиксированы попытки входа под чужой ролью">⚠</span>' : '';
 
       var roleKind = isMasterLikeUser(u) ? 'Мастер/ИТР' : (isServiceUser(u) ? 'Служба' : '—');
@@ -2182,7 +2176,7 @@
 
       usersHtml += '<div class="moderation-user ' + statusClass + '">';
       usersHtml += '<div class="info"><strong>' + escapeHtml(u.name) + '</strong>' + securityMark + ' (' + escapeHtml(u.phone) + ')<br>';
-      usersHtml += '<span style="font-size:12px; color:#6b7280;">Роль: ' + roleKind + ' | ' + displayRole + displayBrigade + ' | ' + statusText + chiefMark + seniorMark + drillerMark + '</span></div>';
+      usersHtml += '<span style="font-size:12px; color:#6b7280;">Роль: ' + roleKind + ' | ' + displayRole + displayBrigade + ' | ' + statusText + chiefMark + seniorMark + drillerMark + technologistMark + '</span></div>';
       usersHtml += '<div class="btns">';
       if (u.status !== 'approved') usersHtml += '<button class="btn green small" data-uid="' + u.id + '" data-action="approve">Одобрить</button>';
       if (u.status !== 'rejected') usersHtml += '<button class="btn red small" data-uid="' + u.id + '" data-action="reject">Отклонить</button>';
@@ -2286,7 +2280,6 @@
     }
   }
 
-  // ===== СПИСОК ЗАДАНИЙ В ПАНЕЛИ АДМИНА (теперь как у службы) =====
   function renderAdminTasksList() {
     if (!allTasks.length) { adminTasksList.innerHTML = '<p class="empty">Заданий нет.</p>'; return; }
     var list = allTasks.slice().sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
@@ -2295,7 +2288,6 @@
       var t = list[i];
       var overdue = isTaskOverdue(t);
 
-      // ----- ИТР-задание -----
       if (t.audience === 'itr') {
         var targetItr = (t.targetType === 'all') ? 'Все ИТР' : (t.targetRoles || []).join(', ');
         var cardStatus = 'new';
@@ -2328,7 +2320,6 @@
         continue;
       }
 
-      // ----- БРИГАДНОЕ задание (как у службы) -----
       var targetBrs = taskBrigadesList(t);
       var completions = t.completions || {};
       var doneCount = 0, overdueCount = 0;
@@ -2402,7 +2393,6 @@
     });
   }
 
-  // ===== СОЗДАНИЕ ЗАДАНИЯ (с аудиторией) =====
   createTaskBtn.addEventListener('click', async function() {
     if (!loggedService.name) { showToast('Сначала войдите как служба', true); return; }
     if (loggedService.status !== 'approved') { showToast('Аккаунт службы не подтвержден', true); return; }
@@ -2462,7 +2452,6 @@
     }
   });
 
-  // ===== СПИСОК «МОИ ЗАДАНИЯ» У СЛУЖБЫ (остаётся без изменений) =====
   function renderServiceTasksList() {
     if (!loggedService.name) { myTasksServiceList.innerHTML = '<p class="empty">Войдите как служба.</p>'; return; }
     var my = allTasks.filter(function(t) { return t.serviceId === loggedService.role; });
@@ -2609,7 +2598,6 @@
   });
   cancelCloseTaskBtn.addEventListener('click', function() { closeTaskModal.classList.add('hidden'); pendingCloseTaskId = null; });
 
-  // ===== ОТМЕТКА ВЫПОЛНЕНИЯ (разделено на ИТР / БРИГАДЫ) =====
   async function handleTaskDone(id) {
     var t = allTasks.find(function(x) { return x.id === id; });
     if (!t) return;

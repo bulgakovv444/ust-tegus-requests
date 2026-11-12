@@ -904,6 +904,20 @@
     return isITRRole(loggedMaster.roleName);
   }
 
+  // «Мастер бригады» — должность ТРЕБУЕТ выбора бригады (needsBrigade: true),
+  // это не бурильщик, и у пользователя есть реальная бригада из списка.
+  function isBrigadeMasterUser() {
+    if (!loggedMaster.name) return false;
+    if (!loggedMaster.roleName) return false;
+    if (loggedMaster.roleName === 'Бурильщик') return false;
+
+    var roleObj = MASTER_ROLES.find(function(r) { return r.name === loggedMaster.roleName; });
+    if (!roleObj) return false;
+    if (!roleObj.needsBrigade) return false;      // ИТР (Главный энергетик и др.) — отсекаем
+
+    return masterHasBrigade();                     // есть реальная бригада из списка
+  }
+
   function canMasterSeeRequest(req) {
     if (isAdminLoggedIn) return true;
     if (isChiefEngineerPanelUnlocked) return true;
@@ -1056,14 +1070,13 @@
 
     // ---- Ветка БРИГАД ----
     if (task.audience !== 'itr') {
-      if (loggedMaster.roleName === 'Бурильщик') return false;      // бурильщик не получает заданий бригадам
+      // Жёстко: только «мастер бригады» (должность требует бригады,
+      // есть реальная бригада из списка, не бурильщик).
+      if (!isBrigadeMasterUser()) return false;
       if (task.targetType === 'all') {
-        if (!masterHasBrigade()) return false;
         return BRIGADES.indexOf(loggedMaster.brigade) !== -1;
       }
-      if (!task.targetBrigades || task.targetBrigades.indexOf(loggedMaster.brigade) === -1) return false;
-      if (!masterHasBrigade()) return false;
-      return true;
+      return (task.targetBrigades || []).indexOf(loggedMaster.brigade) !== -1;
     }
 
     // ---- Ветка ИТР ----
@@ -1802,9 +1815,10 @@
     if (savedMasterActive === 'true' && mName && mPhone && mRoleId) {
       var roleObj = MASTER_ROLES.find(r => r.id === mRoleId);
       var roleName = roleObj ? roleObj.name : '';
-      loggedMaster = { name: mName, phone: mPhone, brigade: mBrigade || '', role: mRoleId, roleName: roleName, status: 'pending' };
+      var effectiveBrigade = (roleObj && roleObj.needsBrigade) ? (mBrigade || '') : '';
+      loggedMaster = { name: mName, phone: mPhone, brigade: effectiveBrigade, role: mRoleId, roleName: roleName, status: 'pending' };
       masterLoginBlock.classList.add('hidden'); masterWorkBlock.classList.remove('hidden');
-      loggedMasterBrigade.textContent = mBrigade || roleName;
+      loggedMasterBrigade.textContent = effectiveBrigade || roleName;
       loggedMasterName.textContent = mName + ', ' + mPhone;
       renderServicesGrid(masterServicesGrid, 'master'); updateUIState(); switchToTab('master');
     } else if (savedServiceActive === 'true' && sName && sPhone && sRole) {
@@ -1834,6 +1848,7 @@
     } else {
       brigadeSelect.classList.add('hidden');
       brigadeSelect.value = '';
+      localStorage.removeItem('ust_save_m_brigade');
     }
   });
 
@@ -1912,37 +1927,40 @@
       return;
     }
 
+    var roleObj = MASTER_ROLES.find(function(r) { return r.id === roleId; });
+    var effectiveBrigade = (roleObj && roleObj.needsBrigade) ? (brigade || '') : '';
+
     var existingUser = allUsers.find(function(u) { return u.phone === phone; });
 
     if (existingUser) {
       if (existingUser.status === 'approved') {
         if (isMasterLikeUser(existingUser)) {
-          await update(ref(db, 'users/' + existingUser.id), { name: name, roleId: roleId, roleName: roleName, brigade: brigade, role: 'master', dualRole: false });
+          await update(ref(db, 'users/' + existingUser.id), { name: name, roleId: roleId, roleName: roleName, brigade: effectiveBrigade, role: 'master', dualRole: false });
         }
-        loggedMaster = { name: name, phone: phone, brigade: brigade, role: roleId, roleName: roleName, status: 'approved' };
+        loggedMaster = { name: name, phone: phone, brigade: effectiveBrigade, role: roleId, roleName: roleName, status: 'approved' };
         showToast('Вы успешно вошли (данные обновлены).');
       } else if (existingUser.status === 'pending') {
-        loggedMaster = { name: name, phone: phone, brigade: brigade, role: roleId, roleName: roleName, status: 'pending' };
+        loggedMaster = { name: name, phone: phone, brigade: effectiveBrigade, role: roleId, roleName: roleName, status: 'pending' };
         showToast('Ваш аккаунт уже на проверке.', true);
       } else {
         showToast('Ваш аккаунт отклонен. Обратитесь к администратору.', true); return;
       }
     } else {
       var newRef = push(ref(db, 'users'));
-      await set(newRef, { name: name, phone: phone, roleId: roleId, roleName: roleName, brigade: brigade, role: 'master', status: 'pending', createdAt: Date.now(), dualRole: false });
-      loggedMaster = { name: name, phone: phone, brigade: brigade, role: roleId, roleName: roleName, status: 'pending' };
+      await set(newRef, { name: name, phone: phone, roleId: roleId, roleName: roleName, brigade: effectiveBrigade, role: 'master', status: 'pending', createdAt: Date.now(), dualRole: false });
+      loggedMaster = { name: name, phone: phone, brigade: effectiveBrigade, role: roleId, roleName: roleName, status: 'pending' };
       showToast('Регистрация отправлена. Ожидайте подтверждения.');
     }
 
     localStorage.setItem('ust_save_m_name', name);
     localStorage.setItem('ust_save_m_phone', phone);
     localStorage.setItem('ust_save_m_role_id', roleId);
-    localStorage.setItem('ust_save_m_brigade', brigade);
+    localStorage.setItem('ust_save_m_brigade', effectiveBrigade);
     localStorage.setItem('ust_logged_master_active', 'true');
     localStorage.removeItem('ust_logged_service_active');
 
     masterLoginBlock.classList.add('hidden'); masterWorkBlock.classList.remove('hidden');
-    loggedMasterBrigade.textContent = brigade || roleName;
+    loggedMasterBrigade.textContent = effectiveBrigade || roleName;
     loggedMasterName.textContent = name + ', ' + phone;
     renderServicesGrid(masterServicesGrid, 'master');
     updateUIState();
@@ -2268,7 +2286,7 @@
     }
   }
 
-  // ===== СПИСОК ЗАДАНИЙ В ПАНЕЛИ АДМИНА =====
+  // ===== СПИСОК ЗАДАНИЙ В ПАНЕЛИ АДМИНА (теперь как у службы) =====
   function renderAdminTasksList() {
     if (!allTasks.length) { adminTasksList.innerHTML = '<p class="empty">Заданий нет.</p>'; return; }
     var list = allTasks.slice().sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
@@ -2276,22 +2294,102 @@
     for (var i = 0; i < list.length; i++) {
       var t = list[i];
       var overdue = isTaskOverdue(t);
-      var target = (t.audience === 'itr')
-        ? (t.targetType === 'all' ? 'Все ИТР' : (t.targetRoles || []).join(', '))
-        : (t.targetType === 'all' ? 'Все бригады' : (t.targetBrigades || []).join(', '));
-      var audLabel = t.audience === 'itr'
-        ? '<span class="badge itr">ИТР</span>'
-        : '<span class="badge brigade">Бригады</span>';
-      html += '<div class="task-card status-' + (t.status || 'new') + (overdue ? ' status-overdue' : '') + '">';
-      html += '<div class="task-header"><div><div class="task-title">' + escapeHtml(t.title || 'Без названия') + '</div>';
-      html += '<div class="task-from">' + audLabel + ' От службы: ' + escapeHtml(serviceName(t.serviceId)) + ' → ' + escapeHtml(target) + '</div></div>';
-      if (overdue) html += '<span class="badge overdue">⚠ ПРОСРОЧЕНО</span>';
-      else if (t.status === 'closed') html += '<span class="badge" style="background:#6b7280;">Закрыто службой</span>';
-      else if (t.status === 'done') html += '<span class="badge ok">✔ Выполнено</span>';
+
+      // ----- ИТР-задание -----
+      if (t.audience === 'itr') {
+        var targetItr = (t.targetType === 'all') ? 'Все ИТР' : (t.targetRoles || []).join(', ');
+        var cardStatus = 'new';
+        if (t.status === 'closed') cardStatus = 'closed';
+        else if (t.status === 'done') cardStatus = 'done';
+        else if (overdue) cardStatus = 'overdue';
+
+        html += '<div class="task-card status-' + cardStatus + '">';
+        html += '<div class="task-header"><div>';
+        html += '<div class="task-title">' + escapeHtml(t.title || 'Без названия') + ' <span class="badge itr">ИТР</span></div>';
+        html += '<div class="task-from">От службы: ' + escapeHtml(serviceName(t.serviceId)) + ' → ' + escapeHtml(targetItr) + '</div></div>';
+        if (t.status === 'closed') html += '<span class="badge" style="background:#6b7280;">Закрыто службой</span>';
+        else if (overdue && t.status !== 'done') html += '<span class="badge overdue">⚠ ПРОСРОЧЕНО</span>';
+        else if (t.status === 'done') html += '<span class="badge ok">✔ Выполнено</span>';
+        else html += '<span class="badge task">Новое</span>';
+        html += '</div>';
+
+        if (t.deadline) {
+          html += '<div class="task-deadline-alert" style="' + (overdue ? 'background:#fef2f2;border-color:#fecaca;color:#991b1b;font-weight:700;' : '') + '">📅 Срок: ' + formatDate(t.deadline) + (overdue ? ' · ПРОСРОЧЕНО' : '') + '</div>';
+        }
+        html += '<div class="task-desc">' + escapeHtml(t.desc || '') + '</div>';
+        html += '<div class="task-meta">🕒 Создано: ' + formatDate(t.createdAt) + '</div>';
+
+        html += '<div class="task-progress">';
+        html += '<div class="task-progress-label"><span>' + (t.acceptedBy ? ('✔ ' + escapeHtml(t.acceptedBy.name || '') + ' — ' + escapeHtml(t.acceptedBy.roleName || '') + ' (' + formatDate(t.doneAt) + ')') : '⏳ Не выполнено') + '</span><span>' + (t.status === 'done' ? '100%' : '0%') + '</span></div>';
+        html += '<div class="task-progress-bar"><div style="width:' + (t.status === 'done' ? '100' : '0') + '%"></div></div>';
+        html += '</div>';
+
+        html += '<div class="task-actions"><button class="btn red small" data-tid="' + t.id + '">Удалить</button></div></div>';
+        continue;
+      }
+
+      // ----- БРИГАДНОЕ задание (как у службы) -----
+      var targetBrs = taskBrigadesList(t);
+      var completions = t.completions || {};
+      var doneCount = 0, overdueCount = 0;
+      for (var b = 0; b < targetBrs.length; b++) {
+        if (completions[targetBrs[b]] && completions[targetBrs[b]].done) doneCount++;
+        else if (isTaskOverdue(t)) overdueCount++;
+      }
+      var totalCount = targetBrs.length;
+      var progressPct = totalCount ? Math.round(doneCount / totalCount * 100) : 0;
+      var target = t.targetType === 'all' ? 'Все бригады (' + totalCount + ')' : (t.targetBrigades || []).join(', ');
+
+      var cardStatus2 = 'new';
+      if (t.status === 'closed') cardStatus2 = 'closed';
+      else if (doneCount === totalCount && totalCount > 0) cardStatus2 = 'done';
+      else if (doneCount > 0) cardStatus2 = 'partial';
+      if (isTaskOverdue(t) && cardStatus2 !== 'done' && cardStatus2 !== 'closed') cardStatus2 = 'overdue';
+
+      html += '<div class="task-card status-' + cardStatus2 + '">';
+      html += '<div class="task-header"><div>';
+      html += '<div class="task-title">' + escapeHtml(t.title || 'Без названия') + ' <span class="badge brigade">Бригады</span></div>';
+      html += '<div class="task-from">От службы: ' + escapeHtml(serviceName(t.serviceId)) + ' → ' + escapeHtml(target) + '</div></div>';
+
+      if (t.status === 'closed') html += '<span class="badge" style="background:#6b7280;">Закрыто службой</span>';
+      else if (isTaskOverdue(t) && cardStatus2 !== 'done') html += '<span class="badge overdue">⚠ ПРОСРОЧЕНО</span>';
+      else if (cardStatus2 === 'done') html += '<span class="badge ok">✔ Выполнено</span>';
+      else if (cardStatus2 === 'partial') html += '<span class="badge progress">Выполняется</span>';
+      else html += '<span class="badge task">Новое</span>';
       html += '</div>';
-      if (t.deadline) html += '<div class="task-deadline-alert">📅 Срок: ' + formatDate(t.deadline) + '</div>';
+
+      if (t.deadline) {
+        html += '<div class="task-deadline-alert" style="' + (isTaskOverdue(t) ? 'background:#fef2f2;border-color:#fecaca;color:#991b1b;font-weight:700;' : '') + '">📅 Срок: ' + formatDate(t.deadline) + (isTaskOverdue(t) ? ' · ПРОСРОЧЕНО' : '') + '</div>';
+      }
+
       html += '<div class="task-desc">' + escapeHtml(t.desc || '') + '</div>';
       html += '<div class="task-meta">🕒 Создано: ' + formatDate(t.createdAt) + '</div>';
+
+      html += '<div class="task-progress">';
+      html += '<div class="task-progress-label"><span>Выполнено ' + doneCount + ' из ' + totalCount + ' бригад' + (overdueCount > 0 ? ' · ⚠ просрочено: ' + overdueCount : '') + '</span><span>' + progressPct + '%</span></div>';
+      html += '<div class="task-progress-bar"><div style="width:' + progressPct + '%"></div></div>';
+      html += '</div>';
+
+      html += '<div class="task-brigade-list">';
+      for (var bb = 0; bb < targetBrs.length; bb++) {
+        var br = targetBrs[bb];
+        var c = completions[br];
+        var rowStatus = '';
+        var rowText = '';
+        if (c && c.done) {
+          rowStatus = 'status-done';
+          rowText = '✅ ' + escapeHtml(br) + ' — выполнил ' + escapeHtml(c.name || '') + ' (' + formatDate(c.doneAt) + ')';
+        } else if (isTaskOverdue(t)) {
+          rowStatus = 'status-overdue';
+          rowText = '⚠ ' + escapeHtml(br) + ' — НЕ ВЫПОЛНЕНО (просрочено)';
+        } else {
+          rowStatus = 'status-pending';
+          rowText = '⏳ ' + escapeHtml(br) + ' — не выполнено';
+        }
+        html += '<div class="row"><span class="' + rowStatus + '">' + rowText + '</span></div>';
+      }
+      html += '</div>';
+
       html += '<div class="task-actions"><button class="btn red small" data-tid="' + t.id + '">Удалить</button></div></div>';
     }
     adminTasksList.innerHTML = html;
@@ -2364,7 +2462,7 @@
     }
   });
 
-  // ===== СПИСОК «МОИ ЗАДАНИЯ» У СЛУЖБЫ =====
+  // ===== СПИСОК «МОИ ЗАДАНИЯ» У СЛУЖБЫ (остаётся без изменений) =====
   function renderServiceTasksList() {
     if (!loggedService.name) { myTasksServiceList.innerHTML = '<p class="empty">Войдите как служба.</p>'; return; }
     var my = allTasks.filter(function(t) { return t.serviceId === loggedService.role; });
@@ -2375,7 +2473,6 @@
       var t = my[i];
       var overdue = isTaskOverdue(t);
 
-      // ----- ИТР-задание -----
       if (t.audience === 'itr') {
         var targetItr = (t.targetType === 'all') ? 'Все ИТР' : (t.targetRoles || []).join(', ');
         var cardStatus = 'new';
@@ -2412,7 +2509,6 @@
         continue;
       }
 
-      // ----- БРИГАДНОЕ задание -----
       var targetBrs = taskBrigadesList(t);
       var completions = t.completions || {};
       var doneCount = 0, overdueCount = 0;
